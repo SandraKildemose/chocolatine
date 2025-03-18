@@ -1,87 +1,107 @@
-name: Chocolatine Workflow
+name: chocolatine
 
 on:
   push:
     branches-ignore:
-      - ga-ignore-*
+    - "ga-ignore-*"
   pull_request:
     branches-ignore:
-      - ga-ignore-*
+    - "ga-ignore-*"
+
+env:
+  MIRROR_URL: "git@github.com:Remi-Mergen/chocolatine-mirror.git"
+  EXECUTABLES: "binary"
+  ARGUMENTS: ""
 
 jobs:
-
   check_coding_style:
-    name: Check Coding Style
+    name: "Use coding_style_checker script to verify if the code is clean and report any coding-style errors"
     runs-on: ubuntu-latest
     container: ghcr.io/epitech/coding-style-checker:latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Run Coding Style Checker
-        run: check.sh $(pwd) $(pwd)
-
-      - name: Process Coding Style Report
+      - uses: actions/checkout@v3
+      - id: check_coding_style
         run: |
-          if [ -f coding-style-reports.log ]; then
-            while IFS=: read -r file line column message; do
-              echo "::error file=$file,line=$line,col=$column::$message"
-            done < coding-style-reports.log
+          check.sh $(pwd) $(pwd)
+          CODING_STYLE_ERRORS=$(cat $(pwd)/coding-style-reports.log)
+          for ERRORS in $CODING_STYLE_ERRORS; do
+            array=(`echo $ERRORS | sed 's/:/\n/g'`)
+            echo "::error file=${array[1]#./},title=${array[3]#./} coding style errors detected: ${array[2]#./}::${array[4]#./}"
+          done
+          if [[ -n $CODING_STYLE_ERRORS ]]
+          then
             exit 1
+          else
+            echo No coding style errors detected
+          fi
+  
+
+  check_repo:
+    name: "Checks if the repository is clean and void of any unwanted files (temp files, binary files, etc.)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - id: check_repo
+        run: |
+          UNWANTED_FILES=$(find . -type f -not -path "./git/*" -wholename "*tmp/*" -or -name "*~" -or -name "*.o" -or -name "*.so" -or -name "*.gcno" -or -name "*.gcda" -or -name "*#" -or -name "#*" -or -name "*.gcov" -or -name "*pain_au_chocolat*")
+          for FILES in $UNWANTED_FILES; do
+            echo "::error file=${FILES#./},title=Unwanted file detected::${FILES#./}"
+          done
+          if [[ -n $UNWANTED_FILES ]]
+          then
+            exit 1
+          else
+            echo No unwanted files detected
           fi
 
   check_program_compilation:
-    name: Check Program Compilation
+    needs: [check_repo]
+    name: "Checks if make compil and test all binary listed in the ARGUMENTS variable"
     runs-on: ubuntu-latest
-    needs: check_coding_style
-    container: epitechcontent/epitest-docker
+    container:
+      image: epitechcontent/epitest-docker:latest
+
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Compile the Project
-        run: timeout 120 make
-
-      - name: Clean the Project
-        run: make clean
-
-      - name: Verify Executables
-        env:
-          EXECUTABLES: "my_executable,another_executable"
-        run: |
-          IFS=',' read -ra FILES <<< "$EXECUTABLES"
-          for file in "${FILES[@]}"; do
-            if [ ! -x "$file" ]; then
-              echo "::error file=$file::Executable not found or not executable!"
-              exit 1
-            fi
-          done
+      - uses: actions/checkout@v3
+      - id: check_program_compilation
+        run: make
+        timeout-minutes: 2
+      - run: make clean
+      - run: |
+          OIFS=$IFS
+          IFS=','
+          for x in $EXECUTABLES
+            do
+              ./$x $ARGUMENTS
+            done
+          IFS=$OIFS
 
   run_tests:
-    name: Run Tests
+    needs: [check_program_compilation]
+    name: "Runs tests with criterion"
     runs-on: ubuntu-latest
-    needs: check_program_compilation
-    container: epitechcontent/epitest-docker
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+    container:
+      image: epitechcontent/epitest-docker:latest
 
-      - name: Run Tests
-        run: timeout 120 make tests_run
+    steps:
+      - uses: actions/checkout@v3
+      - id: run_tests
+        run: make tests_run
+        timeout-minutes: 2
 
   push_to_mirror:
-    name: Push to Mirror
+    needs: [run_tests]
+    if: ${{ github.event_name == 'push' }}
+    name: "Push all files to mirror specified"
     runs-on: ubuntu-latest
-    needs: run_tests
-    env:
-      MIRROR_URL: ${{ secrets.MIRROR_URL }}
-    if: github.event_name == 'push' && github.repository != github.actor + '/' + github.event.repository.name
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
 
-      - name: Mirror Repository
-        uses: pixta-dev/repository-mirroring-action@v1
+    steps:
+      - uses: actions/checkout@v2
         with:
-          target_repo_url: ${{ secrets.MIRROR_URL }}
-          ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+          fetch-depth: 0
+      - uses: pixta-dev/repository-mirroring-action@v1
+        with:
+          target_repo_url:
+            ${{ env.MIRROR_URL }}
+          ssh_private_key:
+            ${{ secrets.GIT_SSH_PRIVATE_KEY }}
