@@ -64,13 +64,15 @@ jobs:
 
       - name: Check executables
         run: |
-          IFS=',' read -ra files <<< "$EXECUTABLES"
-          for file in "${files[@]}"; do
+
+          echo "$EXECUTABLES" | tr ',' '\n' | while read -r file; do
             if [ ! -x "$file" ]; then
-              echo "::error file=$file::Missing or not executable: $file"
-              exit 1
-            fi
+          echo "::error file=$file::Missing or not executable: $file"
+          exit 1
+          fi
+          done
           
+         
 
 
           
