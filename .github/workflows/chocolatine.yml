@@ -9,8 +9,8 @@ on:
       - "ga-ignore-*"
 
 env:
-  EXECUTABLES: "binary"
-  MIRROR_URL: "git@github.com:SandraKildemose/chocolatine.git"
+  EXECUTABLES: "directory1/executableA,directory2/executableB"
+  MIRROR_URL: " git@github.com:EpitechPGEPromo2029/B-DOP-200-PAR-2-1-chocolatine-sandra.kildemose-jorgensen.git"
 
 jobs:
   check_conditions:
@@ -23,7 +23,7 @@ jobs:
         id: check
         run: |
           echo "Repository: $GITHUB_REPOSITORY"
-          if [ "$GITHUB_REPOSITORY" = "SandraKildemose/chocolatine" ]; then
+          if [ "$GITHUB_REPOSITORY" = " git@github.com:EpitechPGEPromo2029/B-DOP-200-PAR-2-1-chocolatine-sandra.kildemose-jorgensen.git" ]; then
             echo "result=false" >> $GITHUB_OUTPUT
           else
             echo "result=true" >> $GITHUB_OUTPUT
