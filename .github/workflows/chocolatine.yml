@@ -1,96 +1,97 @@
-name: Chocolatine
+name: chocolatine # Navnet på workflow
 
-on:
+on: # Hvornår workflowet skal køre
   push:
+    branches-ignore:
+      - "ga-ignore-*"
   pull_request:
+    branches-ignore:
+      - "ga-ignore-*"
 
 env:
-  MIRROR_URL: git@github.com:epitech/mirror-repo.git
-  EXECUTABLES: my_binary
+  EXECUTABLES: "mysh"  # Skift til det rigtige eksekverbare program
+  MIRROR_URL: "git@github.com:SandraKildemose/chocolatine.git"
 
-jobs:
-  check_conditions:
-    runs-on: ubuntu-latest
-    outputs:
-      should_run: ${{ steps.check.outputs.should_run }}
-    steps:
-      - name: Check if workflow should run
-        id: check
-        run: |
-          if [[ "${{ github.ref_name }}" == ga-ignore-* ]] || [[ "${{ github.repository }}" == *"${{ env.MIRROR_URL##*/ }}" ]]; then
-            echo "should_run=false" >> $GITHUB_OUTPUT
-          else
-            echo "should_run=true" >> $GITHUB_OUTPUT
-          fi
+jobs:  # Her defineres jobbet, og betingelsen gælder for hele jobbet
+  check_coding_style:  # ID som Epitech beder om
+    runs-on: ubuntu-latest  # Linux-baseret, bedre til skyen
+    container: ghcr.io/epitech/coding-style-checker:latest  # Koden Epitech bad om at bruge
+    if: github.repository != 'SandraKildemose/chocolatine'  # Kører kun hvis det ikke er mirror
 
-  check_coding_style:
-    needs: check_conditions
-    if: needs.check_conditions.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/epitech/coding-style-checker:latest
-    steps:
+    steps:  # Test-skridt
+      - name: Print message
+        run: echo "Workflow runs"  # Echo bruges i shell (Bash/Terminal), betyder print i terminal
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Run coding style check
         run: check.sh $(pwd) $(pwd)
+
       - name: Display coding style errors
+        if: always()
         run: |
           if [ -s coding-style-reports.log ]; then
             while IFS= read -r line; do
               file=$(echo "$line" | cut -d: -f1)
               line_number=$(echo "$line" | cut -d: -f2)
               message=$(echo "$line" | cut -d: -f3-)
-              echo "::error file=$file,line=$line_number::$message"
+              echo "::error file=$file,line=$line_number,title=Coding Style::$message"
             done < coding-style-reports.log
             exit 1
           fi
 
   check_program_compilation:
-    needs: check_coding_style
-    if: needs.check_conditions.outputs.should_run == 'true'
     runs-on: ubuntu-latest
-    container:
-      image: epitechcontent/epitest-docker
+    container: epitechcontent/epitest-docker
+    needs: check_coding_style
+    if: github.repository != 'SandraKildemose/chocolatine'
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Run make
-        timeout-minutes: 2
+
+      - name: Compile program (make)
         run: make
-      - name: Run make clean
+        timeout-minutes: 2
+
+      - name: Clean build (make clean)
         run: make clean
+
       - name: Check executables
         run: |
-          IFS=',' read -ra files <<< "$EXECUTABLES"
-          for file in "${files[@]}"; do
-            if [[ ! -x "$file" ]]; then
-              echo "::error file=$file::Executable $file is missing or not executable"
+          IFS=',' read -ra EXECS <<< "$EXECUTABLES"
+          for exe in "${EXECS[@]}"; do
+            if [ ! -x "$exe" ]; then
+              echo "::error file=$exe,title=Executable missing or not executable::$exe is not found or is not executable"
               exit 1
             fi
           done
 
   run_tests:
-    needs: check_program_compilation
-    if: needs.check_conditions.outputs.should_run == 'true'
     runs-on: ubuntu-latest
-    container:
-      image: epitechcontent/epitest-docker
+    container: epitechcontent/epitest-docker
+    needs: check_program_compilation
+    if: github.repository != 'SandraKildemose/chocolatine'
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Run tests
-        timeout-minutes: 2
         run: make tests_run
+        timeout-minutes: 2
 
   push_to_mirror:
-    if: github.event_name == 'push' && needs.check_conditions.outputs.should_run == 'true'
-    needs: run_tests
     runs-on: ubuntu-latest
+    needs: run_tests
+    if: github.event_name == 'push' && github.repository != 'SandraKildemose/chocolatine'
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Mirror to ${{ env.MIRROR_URL }}
+
+      - name: Mirror to repository
         uses: pixta-dev/repository-mirroring-action@v1
         with:
           target_repo_url: ${{ env.MIRROR_URL }}
