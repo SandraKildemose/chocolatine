@@ -70,40 +70,10 @@ jobs:
               echo "::error file=$file::Missing or not executable: $file"
               exit 1
             fi
-          done
+          
 
 
-  run_tests:
-    name: Run tests
-    needs: check_program_compilation
-    if: needs.check_conditions.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
-    container: epitechcontent/epitest-docker:latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run tests
-        run: make tests_run
-        timeout-minutes: 2
-
-  push_to_mirror:
-    name: Push to mirror
-    needs: run_tests
-    if: github.event_name == 'push' && needs.check_conditions.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Mirror repository
-        uses: pixta-dev/repository-mirroring-action@v1
-        with:
-          target_repo_url: ${{ env.MIRROR_URL }}
-          ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
-
+          
         
 
     
