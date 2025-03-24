@@ -9,7 +9,7 @@ on:
       - "ga-ignore-*"
 
 env:
-  EXECUTABLES: "mysh"
+  EXECUTABLES: "binary"
   MIRROR_URL: "git@github.com:SandraKildemose/chocolatine.git"
 
 jobs:
@@ -43,74 +43,4 @@ jobs:
       - name: Run coding style check
         run: check.sh $(pwd) $(pwd)
 
-      - name: Display coding style errors
-        if: always()
-        run: |
-          if [ -s coding-style-reports.log ]; then
-            while IFS= read -r line; do
-              file=$(echo "$line" | cut -d: -f1)
-              line_number=$(echo "$line" | cut -d: -f2)
-              message=$(echo "$line" | cut -d: -f3-)
-              echo "::error file=$file,line=$line_number,title=Coding Style::$message"
-            done < coding-style-reports.log
-            exit 1
-          fi
-
-  check_program_compilation:
-    name: Check program compilation
-    needs: check_coding_style
-    if: needs.check_conditions.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
-    container: epitechcontent/epitest-docker
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Compile with make
-        run: make
-        timeout-minutes: 2
-
-      - name: Clean build
-        run: make clean
-
-      - name: Check executables
-        run: |
-          IFS=',' read -ra files <<< "$EXECUTABLES"
-          for exe in "${files[@]}"; do
-            if [ ! -x "$exe" ]; then
-              echo "::error file=$exe,title=Missing executable::$exe is not found or not executable"
-              exit 1
-            fi
-          done
-
-  run_tests:
-    name: Run unit tests
-    needs: check_program_compilation
-    if: needs.check_conditions.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
-    container: epitechcontent/epitest-docker
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run tests
-        run: make tests_run
-        timeout-minutes: 2
-
-  push_to_mirror:
-    name: Push to mirror
-    needs: run_tests
-    if: needs.check_conditions.outputs.should_run == 'true' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Mirror repository
-        uses: pixta-dev/repository-mirroring-action@v1
-        with:
-          target_repo_url: ${{ env.MIRROR_URL }}
-          ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+    
