@@ -1,107 +1,97 @@
-name: chocolatine
+name: Chocolatine
 
 on:
   push:
-    branches-ignore:
-    - "ga-ignore-*"
   pull_request:
-    branches-ignore:
-    - "ga-ignore-*"
 
 env:
-  MIRROR_URL: "git@github.com:Remi-Mergen/chocolatine-mirror.git"
-  EXECUTABLES: "binary"
-  ARGUMENTS: ""
+  MIRROR_URL: git@github.com:epitech/mirror-repo.git
+  EXECUTABLES: my_binary
 
 jobs:
-  check_coding_style:
-    name: "Use coding_style_checker script to verify if the code is clean and report any coding-style errors"
+  check_conditions:
     runs-on: ubuntu-latest
-    container: ghcr.io/epitech/coding-style-checker:latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
     steps:
-      - uses: actions/checkout@v3
-      - id: check_coding_style
+      - name: Check if workflow should run
+        id: check
         run: |
-          check.sh $(pwd) $(pwd)
-          CODING_STYLE_ERRORS=$(cat $(pwd)/coding-style-reports.log)
-          for ERRORS in $CODING_STYLE_ERRORS; do
-            array=(`echo $ERRORS | sed 's/:/\n/g'`)
-            echo "::error file=${array[1]#./},title=${array[3]#./} coding style errors detected: ${array[2]#./}::${array[4]#./}"
-          done
-          if [[ -n $CODING_STYLE_ERRORS ]]
-          then
-            exit 1
+          if [[ "${{ github.ref_name }}" == ga-ignore-* ]] || [[ "${{ github.repository }}" == *"${{ env.MIRROR_URL##*/ }}" ]]; then
+            echo "should_run=false" >> $GITHUB_OUTPUT
           else
-            echo No coding style errors detected
+            echo "should_run=true" >> $GITHUB_OUTPUT
           fi
-  
 
-  check_repo:
-    name: "Checks if the repository is clean and void of any unwanted files (temp files, binary files, etc.)"
+  check_coding_style:
+    needs: check_conditions
+    if: needs.check_conditions.outputs.should_run == 'true'
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/epitech/coding-style-checker:latest
     steps:
-      - uses: actions/checkout@v3
-      - id: check_repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run coding style check
+        run: check.sh $(pwd) $(pwd)
+      - name: Display coding style errors
         run: |
-          UNWANTED_FILES=$(find . -type f -not -path "./git/*" -wholename "*tmp/*" -or -name "*~" -or -name "*.o" -or -name "*.so" -or -name "*.gcno" -or -name "*.gcda" -or -name "*#" -or -name "#*" -or -name "*.gcov" -or -name "*pain_au_chocolat*")
-          for FILES in $UNWANTED_FILES; do
-            echo "::error file=${FILES#./},title=Unwanted file detected::${FILES#./}"
-          done
-          if [[ -n $UNWANTED_FILES ]]
-          then
+          if [ -s coding-style-reports.log ]; then
+            while IFS= read -r line; do
+              file=$(echo "$line" | cut -d: -f1)
+              line_number=$(echo "$line" | cut -d: -f2)
+              message=$(echo "$line" | cut -d: -f3-)
+              echo "::error file=$file,line=$line_number::$message"
+            done < coding-style-reports.log
             exit 1
-          else
-            echo No unwanted files detected
           fi
 
   check_program_compilation:
-    needs: [check_repo]
-    name: "Checks if make compil and test all binary listed in the ARGUMENTS variable"
+    needs: check_coding_style
+    if: needs.check_conditions.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     container:
-      image: epitechcontent/epitest-docker:latest
-
+      image: epitechcontent/epitest-docker
     steps:
-      - uses: actions/checkout@v3
-      - id: check_program_compilation
-        run: make
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run make
         timeout-minutes: 2
-      - run: make clean
-      - run: |
-          OIFS=$IFS
-          IFS=','
-          for x in $EXECUTABLES
-            do
-              ./$x $ARGUMENTS
-            done
-          IFS=$OIFS
+        run: make
+      - name: Run make clean
+        run: make clean
+      - name: Check executables
+        run: |
+          IFS=',' read -ra files <<< "$EXECUTABLES"
+          for file in "${files[@]}"; do
+            if [[ ! -x "$file" ]]; then
+              echo "::error file=$file::Executable $file is missing or not executable"
+              exit 1
+            fi
+          done
 
   run_tests:
-    needs: [check_program_compilation]
-    name: "Runs tests with criterion"
+    needs: check_program_compilation
+    if: needs.check_conditions.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     container:
-      image: epitechcontent/epitest-docker:latest
-
+      image: epitechcontent/epitest-docker
     steps:
-      - uses: actions/checkout@v3
-      - id: run_tests
-        run: make tests_run
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run tests
         timeout-minutes: 2
+        run: make tests_run
 
   push_to_mirror:
-    needs: [run_tests]
-    if: ${{ github.event_name == 'push' }}
-    name: "Push all files to mirror specified"
+    if: github.event_name == 'push' && needs.check_conditions.outputs.should_run == 'true'
+    needs: run_tests
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Mirror to ${{ env.MIRROR_URL }}
+        uses: pixta-dev/repository-mirroring-action@v1
         with:
-          fetch-depth: 0
-      - uses: pixta-dev/repository-mirroring-action@v1
-        with:
-          target_repo_url:
-            ${{ env.MIRROR_URL }}
-          ssh_private_key:
-            ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+          target_repo_url: ${{ env.MIRROR_URL }}
+          ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
