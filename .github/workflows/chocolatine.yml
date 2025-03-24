@@ -29,6 +29,8 @@ jobs:
             echo "result=true" >> $GITHUB_OUTPUT
           fi
 
+          
+
   check_coding_style:
     name: Check coding style
     needs: check_conditions
@@ -42,5 +44,33 @@ jobs:
 
       - name: Run coding style check
         run: check.sh $(pwd) $(pwd)
+  check_program_compilation:
+    name: Check program compilation
+    needs: check_coding_style
+    if: needs.check_conditions.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    container: epitechcontent/epitest-docker:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run make
+        run: make
+        timeout-minutes: 2
+
+      - name: Run make clean
+        run: make clean
+
+      - name: Check executables
+        run: |
+          IFS=',' read -ra files <<< "$EXECUTABLES"
+          for file in "${files[@]}"; do
+            if [ ! -x "$file" ]; then
+              echo "::error file=$file::Missing or not executable: $file"
+              exit 1
+            fi
+          done
+        
 
     
