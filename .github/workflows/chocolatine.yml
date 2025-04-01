@@ -9,8 +9,8 @@ on:
       - "ga-ignore-*"
 
 env:
-  EXECUTABLES: "executableB"
-  MIRROR_URL: "git@github.com:EpitechPGEPromo2029/B-DOP-200-PAR-2-1-chocolatine-sandra.kildemose-jorgensen.git"
+  EXECUTABLES: "directory1/executableA"
+  MIRROR_URL: " git@github.com:EpitechPGEPromo2029/B-DOP-200-PAR-2-1-chocolatine-sandra.kildemose-jorgensen.git"
 
 jobs:
   check_conditions:
@@ -29,6 +29,74 @@ jobs:
             echo "result=true" >> $GITHUB_OUTPUT
           fi
 
+  check_coding_style:
+    name: Check coding style
+    needs: check_conditions
+    if: needs.check_conditions.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    container: ghcr.io/epitech/coding-style-checker:latest
 
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-          
+      - name: Run coding style check
+        run: check.sh $(pwd) $(pwd)
+
+  check_program_compilation:
+    name: Check program compilation
+    needs: check_coding_style
+    if: needs.check_conditions.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    container: epitechcontent/epitest-docker:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run make
+        run: make
+        timeout-minutes: 2
+
+      - name: Check executables
+        run: |
+          echo "$EXECUTABLES" | tr ',' '\n' | while read -r file; do
+            if [ ! -x "$file" ]; then
+              echo "::error file=$file::Missing or not executable: $file"
+              exit 1
+            fi
+          done
+
+      - name: Run make clean
+        run: make clean
+
+  run_tests:
+    name: Run tests
+    needs: check_program_compilation
+    if: needs.check_conditions.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    container: epitechcontent/epitest-docker:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run make tests_run
+        run: make tests_run
+        timeout-minutes: 2
+
+  push_to_mirror:
+    name: Push to mirror repository
+    needs: run_tests
+    if: github.event_name == 'push' && needs.check_conditions.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Push repository to mirror
+        uses: pixta-dev/repository-mirroring-action@v1
+        with:
+          ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+          target_repo_url: ${{ env.MIRROR_URL }}
+          entryPoint: /bin/sh
+          args: -c "mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts && git init && git remote add mirror ${{ env.MIRROR_URL }} && git push --mirror mirror"
+
