@@ -91,12 +91,3 @@ jobs:
     if: github.event_name == 'push' && needs.check_conditions.outputs.should_run == 'true'
     runs-on: ubuntu-latest
 
-    steps:
-      - name: Push repository to mirror
-        uses: pixta-dev/repository-mirroring-action@v1
-        with:
-          ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
-          target_repo_url: ${{ env.MIRROR_URL }}
-          entryPoint: /bin/sh
-          args: -c "mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts && git init && git remote add mirror ${{ env.MIRROR_URL }} && git push --mirror mirror"
-
